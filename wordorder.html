@@ -8,29 +8,32 @@
         :root { --bg-1: #f1f5f9; --bg-2: #ffffff; --bg-3: #f8fafc; --bg-4: #e2e8f0; }
         body { background: var(--bg-1); font-family: system-ui, sans-serif; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; margin: 0; padding: 16px; box-sizing: border-box; }
         * { box-sizing: border-box; }
-        .card { width: 100%; max-width: 500px; background: var(--bg-2); padding: 24px; border-radius: 16px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); display: flex; flex-direction: column; gap: 20px; }
-        .hdr { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; padding-bottom: 12px; }
+        .card { width: 100%; max-width: 500px; background: var(--bg-2); padding: 16px; border-radius: 16px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); display: flex; flex-direction: column; gap: 12px; }
+        .hdr { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px; }
         .hdr h1 { margin: 0; font-size: 20px; color: #1e293b; }
         .btn-n { background: #2563eb; color: white; border: none; padding: 8px 16px; border-radius: 8px; font-weight: 500; cursor: pointer; }
         .btn-n:disabled { background: #94a3b8; cursor: not-allowed; }
-        .img-bx { width: 100%; height: 220px; background: var(--bg-4); border-radius: 12px; display: flex; align-items: center; justify-content: center; overflow: hidden; border: 1px solid #cbd5e1; padding: 12px; text-align: center; }
-        .dz-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+        .img-bx { width: 100%; height: 220px; background: var(--bg-4); border-radius: 12px; display: flex; align-items: center; justify-content: center; overflow: hidden; border: 1px solid #cbd5e1; text-align: center; }
+        .dz-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
         .dz-lbl { font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; display: block; }
         .btn-r { background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; padding: 4px 10px; border-radius: 8px; font-size: 11px; font-weight: 700; text-transform: uppercase; cursor: pointer; }
         .btn-r:hover { background: #e2e8f0; }
-        .dz { width: 100%; min-height: 64px; border: 2px dashed #cbd5e1; background: var(--bg-3); border-radius: 12px; padding: 8px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+        .dz { width: 100%; min-height: 52px; border: 2px dashed #cbd5e1; background: var(--bg-3); border-radius: 12px; padding: 6px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+        .dz-the { background: #cbd5e1; color: #475569; padding: 5px 10px; border-radius: 8px; font-size: 14px; font-weight: 700; user-select: none; }
+        .dz-seg { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-height: 28px; }
         .btn-c { width: 100%; background: #059669; color: white; border: none; padding: 12px; border-radius: 12px; font-size: 16px; font-weight: 600; cursor: pointer; }
-        .fb { text-align: center; font-weight: 500; padding: 12px; border-radius: 12px; margin-top: 8px; display: none; }
-        .wrapper { padding: 10px; border-radius: 12px; margin-bottom: 10px; border: 1px solid rgba(0,0,0,0.05); }
-        .lbl { font-size: 11px; font-weight: 700; display: block; margin-bottom: 6px; }
-        .box { min-height: 50px; display: flex; flex-wrap: wrap; gap: 8px; }
-        .w-crd { padding: 6px 12px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: grab; color: white; user-select: none; touch-action: none; }
+        .fb { text-align: center; font-weight: 500; padding: 10px; border-radius: 12px; margin-top: 6px; display: none; }
+        .wrapper { padding: 8px; border-radius: 12px; margin-bottom: 6px; border: 1px solid rgba(0,0,0,0.05); }
+        .lbl { font-size: 11px; font-weight: 700; display: block; margin-bottom: 4px; }
+        .box { min-height: 44px; display: flex; flex-wrap: wrap; gap: 6px; }
+        .w-crd { padding: 5px 10px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: grab; color: white; user-select: none; touch-action: none; }
         .w-crd.dragging { opacity: 0.35; cursor: grabbing; }
         .bg-subjects { background-color: #3b82f6; }
         .bg-verbs { background-color: #22c55e; }
         .bg-adjectives { background-color: #a855f7; }
         .bg-objects { background-color: #f59e0b; }
         .bg-prepositions { background-color: #ec4899; }
+        .categories { display: flex; flex-direction: column; }
     </style>
 </head>
 <body>
@@ -49,13 +52,20 @@
                 <span class="dz-lbl">Drop words here:</span>
                 <button id="reset-btn" class="btn-r">Reset ↺</button>
             </div>
-            <div id="sentence-dropzone" class="dz"></div>
+            <div id="sentence-dropzone" class="dz">
+                <span class="dz-the">the</span>
+                <div class="dz-seg" id="seg-1"></div>
+                <span class="dz-the">the</span>
+                <div class="dz-seg" id="seg-2"></div>
+                <span class="dz-the">the</span>
+                <div class="dz-seg" id="seg-3"></div>
+            </div>
         </div>
         <div>
             <button id="check-btn" class="btn-c">Check Answer 🔎</button>
             <div id="feedback-message" class="fb"></div>
         </div>
-        <div style="border-top:1px solid #e2e8f0; padding-top:12px;">
+        <div class="categories">
             <div class="wrapper" style="background:#eff6ff;"><span class="lbl" style="color:#2563eb;">Subjects</span><div id="pool-subjects" class="box"></div></div>
             <div class="wrapper" style="background:#f0fdf4;"><span class="lbl" style="color:#16a34a;">Verbs</span><div id="pool-verbs" class="box"></div></div>
             <div class="wrapper" style="background:#f3e8ff;"><span class="lbl" style="color:#9333ea;">Adjectives</span><div id="pool-adjectives" class="box"></div></div>
@@ -65,16 +75,10 @@
     </div>
 
     <script>
-        // worker05.js now generates the whole puzzle server-side — word_pool and
-        // correct_solutions come from a closed, pre-vetted vocabulary (see
-        // word_banks.json), and image_prompt is built from those same exact words,
-        // so the picture and the word-pills can never disagree the way "tiny apron"
-        // did. This page just renders whatever it's given.
         const WORKER_URL = "https://wordorder.lingoer.workers.dev";
         let approvedSolutions = [];
         let draggedElement = null;
 
-        // Fully local, zero-network placeholder for when the worker can't be reached.
         const OFFLINE_IMAGE = "data:image/svg+xml;utf8," + encodeURIComponent(
             '<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512">' +
             '<rect width="100%" height="100%" fill="#e2e8f0"/>' +
@@ -83,25 +87,23 @@
             '</svg>'
         );
 
-        // Last-resort offline puzzle, built from the same closed word banks as the
-        // worker, so vocabulary stays consistent even when the network path fails.
         const mockData = {
             "image_url": OFFLINE_IMAGE,
             "word_pool": {
                 "subjects": ["raccoon", "cat", "dog", "robot"],
-                "verbs": ["drops", "puts", "throws", "carries"],
+                "verbs": ["puts", "drops", "places", "leaves"],
                 "adjectives": ["happy", "red", "wet", "round"],
                 "objects": ["ball", "table", "cup", "basket"],
-                "prepositions": ["on", "in", "under", "near"]
+                "prepositions": ["on", "in", "under"]
             },
-            "correct_solutions": ["the happy raccoon drops the ball on the table"]
+            "correct_solutions": ["the happy raccoon puts the ball on the table"]
         };
 
         const gameImage = document.getElementById("game-image");
         const imageLoader = document.getElementById("image-loader");
-        const dropzone = document.getElementById("sentence-dropzone");
         const feedback = document.getElementById("feedback-message");
         const nextBtn = document.getElementById("next-btn");
+        const segments = [1, 2, 3].map(n => document.getElementById(`seg-${n}`));
 
         function getCategory(el) {
             const cls = Array.from(el.classList).find(c => c.startsWith("bg-"));
@@ -133,6 +135,7 @@
         }
 
         function initDragAndDrop() {
+            // Category pools: simple drop-to-append (used to send a word back / initial supply)
             document.querySelectorAll(".box").forEach(box => {
                 box.addEventListener("dragover", (e) => e.preventDefault());
                 box.addEventListener("drop", (e) => {
@@ -141,30 +144,37 @@
                 });
             });
 
-            dropzone.addEventListener("dragover", (e) => {
-                e.preventDefault();
-                if (!draggedElement) return;
-                const target = getDropTarget(dropzone, e.clientX, e.clientY);
-                if (target == null) {
-                    dropzone.appendChild(draggedElement);
-                } else if (target !== draggedElement) {
-                    dropzone.insertBefore(draggedElement, target);
-                }
+            // Each sentence segment: live reordering while dragging, same as before,
+            // scoped to just that segment so the fixed "the" pills never move.
+            segments.forEach(seg => {
+                seg.addEventListener("dragover", (e) => {
+                    e.preventDefault();
+                    if (!draggedElement) return;
+                    const target = getDropTarget(seg, e.clientX, e.clientY);
+                    if (target == null) {
+                        seg.appendChild(draggedElement);
+                    } else if (target !== draggedElement) {
+                        seg.insertBefore(draggedElement, target);
+                    }
+                });
+                seg.addEventListener("drop", (e) => e.preventDefault());
             });
-            dropzone.addEventListener("drop", (e) => e.preventDefault());
         }
 
         function resetPuzzle() {
-            Array.from(dropzone.querySelectorAll(".w-crd")).forEach(block => {
-                const cat = getCategory(block);
-                const pool = cat ? document.getElementById(`pool-${cat}`) : null;
-                if (pool) pool.appendChild(block);
+            segments.forEach(seg => {
+                Array.from(seg.querySelectorAll(".w-crd")).forEach(block => {
+                    const cat = getCategory(block);
+                    const pool = cat ? document.getElementById(`pool-${cat}`) : null;
+                    if (pool) pool.appendChild(block);
+                });
             });
             feedback.style.display = "none";
         }
 
         function renderPayload(data) {
-            dropzone.innerHTML = ""; gameImage.style.display = "none";
+            segments.forEach(seg => seg.innerHTML = "");
+            feedback.style.display = "none"; gameImage.style.display = "none";
             imageLoader.style.display = "block"; imageLoader.innerText = "Loading artwork...";
             approvedSolutions = data.correct_solutions.map(s => s.toLowerCase().trim().replace(/\s+/g, ' '));
 
@@ -202,11 +212,16 @@
             nextBtn.disabled = false;
         }
 
+        function segWords(seg) {
+            return Array.from(seg.children).map(el => el.innerText.toLowerCase().trim());
+        }
+
         function evaluateSentence() {
-            const blocks = Array.from(dropzone.children);
-            if(!blocks.length) { showFeedback("Drag words onto the target line first!", "#fef3c7", "#92400e"); return; }
-            const txt = blocks.map(el => el.innerText.toLowerCase().trim()).join(" ").replace(/\s+/g, ' ');
-            if (approvedSolutions.some(sol => txt === sol || sol.includes(txt))) {
+            const totalWords = segments.reduce((sum, seg) => sum + seg.children.length, 0);
+            if (!totalWords) { showFeedback("Drag words onto the target line first!", "#fef3c7", "#92400e"); return; }
+            const parts = ["the", ...segWords(segments[0]), "the", ...segWords(segments[1]), "the", ...segWords(segments[2])];
+            const txt = parts.join(" ").replace(/\s+/g, ' ').trim();
+            if (approvedSolutions.includes(txt)) {
                 showFeedback("🎉 Correct! Great job!", "#d1fae5", "#065f46");
             } else {
                 showFeedback("❌ Try a different combination!", "#fee2e2", "#991b1b");
