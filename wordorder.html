@@ -8,22 +8,28 @@
   :root { --bg-1:#f1f5f9; --bg-2:#ffffff; --bg-3:#f8fafc; --bg-4:#e2e8f0; --ink:#1e293b; }
   * { box-sizing: border-box; }
   body { background: var(--bg-1); font-family: system-ui, sans-serif; min-height: 100vh; display: flex; flex-direction: column; align-items: center; margin: 0; padding: 24px 16px; }
-  .card { width: 100%; max-width: 560px; background: var(--bg-2); padding: 24px; border-radius: 16px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); display: flex; flex-direction: column; gap: 16px; }
+  .card { width: 100%; max-width: 760px; background: var(--bg-2); padding: 24px; border-radius: 16px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1); display: flex; flex-direction: column; gap: 16px; }
   h1 { margin: 0; font-size: 20px; color: var(--ink); }
+  h2 { margin: 0 0 8px; font-size: 14px; color: var(--ink); }
   p.sub { margin: 0; font-size: 13px; color: #64748b; }
   label { font-size: 11px; font-weight: 700; text-transform: uppercase; color: #94a3b8; display: block; margin-bottom: 6px; }
   input[type=text], textarea { width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid #cbd5e1; font-size: 14px; font-family: inherit; background: var(--bg-3); }
   textarea { min-height: 70px; resize: vertical; }
-  .row { display: flex; gap: 8px; }
-  .row > div { flex: 1; }
   button { background: #2563eb; color: white; border: none; padding: 12px; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; }
   button:disabled { background: #94a3b8; cursor: not-allowed; }
-  .img-bx { width: 100%; min-height: 260px; background: var(--bg-4); border-radius: 12px; display: flex; align-items: center; justify-content: center; overflow: hidden; border: 1px solid #cbd5e1; padding: 12px; text-align: center; }
+  .note { font-size: 12px; background: #eff6ff; color: #1e40af; padding: 10px 12px; border-radius: 10px; }
+  .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 620px) { .compare { grid-template-columns: 1fr; } }
+  .col { display: flex; flex-direction: column; gap: 8px; background: var(--bg-3); border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px; }
+  .col-title { font-size: 12px; font-weight: 700; color: #475569; }
+  .img-bx { width: 100%; min-height: 200px; background: var(--bg-4); border-radius: 10px; display: flex; align-items: center; justify-content: center; overflow: hidden; border: 1px solid #cbd5e1; padding: 10px; text-align: center; }
   .img-bx img { width: 100%; height: 100%; object-fit: cover; display: none; }
-  .status { font-size: 13px; padding: 10px 12px; border-radius: 10px; font-weight: 500; display: none; }
+  .status { font-size: 12px; padding: 8px 10px; border-radius: 8px; font-weight: 500; display: none; }
   .status.ok { display: block; background: #d1fae5; color: #065f46; }
   .status.err { display: block; background: #fee2e2; color: #991b1b; }
   .status.pending { display: block; background: #fef3c7; color: #92400e; }
+  .url-link { font-size: 11px; word-break: break-all; color: #2563eb; text-decoration: none; }
+  .url-link:hover { text-decoration: underline; }
   details { background: var(--bg-3); border-radius: 10px; border: 1px solid #e2e8f0; }
   summary { cursor: pointer; padding: 10px 12px; font-size: 12px; font-weight: 700; color: #475569; }
   pre { margin: 0; padding: 0 12px 12px; font-size: 12px; white-space: pre-wrap; word-break: break-all; color: #334155; }
@@ -34,30 +40,48 @@
   <div class="card">
     <div>
       <h1>🖼️ WordOrder — Image Generation Test</h1>
-      <p class="sub">Calls your Cloudflare Worker, then loads the returned Pollinations image_url directly in the browser (same pattern the real game uses).</p>
+      <p class="sub">Calls your Cloudflare Worker for Endpoint A, and builds Endpoint B directly in the browser from the same prompt, so you can see which Pollinations URL format actually works on your network.</p>
+    </div>
+
+    <div class="note">
+      Confirmed by live testing: <code>gen.pollinations.ai/image/…</code> (Endpoint A) now returns <strong>401 — requires a paid API key</strong>. <code>image.pollinations.ai/prompt/…</code> (Endpoint B) is the free, key-free endpoint and reaches real generation — it only hit a 429 because it landed on a congested community model, so this page now pins <code>model=flux</code> to avoid that. Deploy <strong>worker01.js</strong> (which also switches to this endpoint) to make Endpoint A match. Anonymous requests are rate-limited to roughly 1 every 15 seconds, so space out repeated clicks.
     </div>
 
     <div>
-      <label for="worker-url">Worker URL</label>
+      <label for="worker-url">Worker URL (used for Endpoint A only)</label>
       <input type="text" id="worker-url" value="https://wordorder.lingoer.workers.dev">
     </div>
 
     <div>
-      <label for="prompt-text">Test prompt (optional — leave blank to use the worker's default)</label>
+      <label for="prompt-text">Test prompt (used for both endpoints)</label>
       <textarea id="prompt-text">Act as an English grammar game data generator. Create a unique, highly visual 2D cartoon scenario involving an animal, person, or vehicle. Provide a highly detailed image generation prompt for that scenario.</textarea>
     </div>
 
-    <button id="run-btn">Fetch &amp; Test Image ▶️</button>
+    <button id="run-btn">Fetch &amp; Test Both Endpoints ▶️</button>
 
-    <div id="status" class="status"></div>
-
-    <div class="img-bx">
-      <div id="img-placeholder">No image requested yet.</div>
-      <img id="game-image" alt="Generated scene">
+    <div class="compare">
+      <div class="col">
+        <div class="col-title">Endpoint A — via Worker (gen.pollinations.ai/image/…)</div>
+        <div id="status-a" class="status"></div>
+        <div class="img-bx">
+          <div id="placeholder-a">No image requested yet.</div>
+          <img id="image-a" alt="Endpoint A result">
+        </div>
+        <a id="link-a" class="url-link" href="#" target="_blank" rel="noopener">—</a>
+      </div>
+      <div class="col">
+        <div class="col-title">Endpoint B — direct (image.pollinations.ai/prompt/…)</div>
+        <div id="status-b" class="status"></div>
+        <div class="img-bx">
+          <div id="placeholder-b">No image requested yet.</div>
+          <img id="image-b" alt="Endpoint B result">
+        </div>
+        <a id="link-b" class="url-link" href="#" target="_blank" rel="noopener">—</a>
+      </div>
     </div>
 
     <details>
-      <summary>Raw worker response</summary>
+      <summary>Raw worker response (Endpoint A)</summary>
       <pre id="raw-json">—</pre>
     </details>
   </div>
@@ -66,70 +90,82 @@
     const workerUrlInput = document.getElementById("worker-url");
     const promptInput = document.getElementById("prompt-text");
     const runBtn = document.getElementById("run-btn");
-    const statusEl = document.getElementById("status");
-    const imgPlaceholder = document.getElementById("img-placeholder");
-    const gameImage = document.getElementById("game-image");
     const rawJson = document.getElementById("raw-json");
 
-    function setStatus(kind, text) {
-      statusEl.className = "status " + kind;
-      statusEl.textContent = text;
+    const els = {
+      a: {
+        status: document.getElementById("status-a"),
+        placeholder: document.getElementById("placeholder-a"),
+        img: document.getElementById("image-a"),
+        link: document.getElementById("link-a"),
+      },
+      b: {
+        status: document.getElementById("status-b"),
+        placeholder: document.getElementById("placeholder-b"),
+        img: document.getElementById("image-b"),
+        link: document.getElementById("link-b"),
+      },
+    };
+
+    function setStatus(col, kind, text) {
+      col.status.className = "status " + kind;
+      col.status.textContent = text;
+    }
+
+    function testImage(col, url) {
+      col.link.href = url;
+      col.link.textContent = url;
+      col.img.style.display = "none";
+      col.placeholder.style.display = "flex";
+      col.placeholder.textContent = "Generating image (can take 5–20s)...";
+      setStatus(col, "pending", "⏳ Loading...");
+
+      const startedAt = performance.now();
+      col.img.onload = () => {
+        const ms = Math.round(performance.now() - startedAt);
+        col.placeholder.style.display = "none";
+        col.img.style.display = "block";
+        setStatus(col, "ok", `✅ Loaded in ${ms}ms.`);
+      };
+      col.img.onerror = () => {
+        col.placeholder.textContent = "⚠️ Failed to load.";
+        setStatus(col, "err", "❌ Did not load. Click the link above to open the raw URL directly and see Pollinations' actual response.");
+      };
+      col.img.src = url;
     }
 
     async function runTest() {
       const base = workerUrlInput.value.trim().replace(/\/+$/, "");
       const prompt = promptInput.value.trim();
-      if (!base) { setStatus("err", "Enter a worker URL first."); return; }
-
-      const url = prompt ? `${base}/?prompt=${encodeURIComponent(prompt)}` : base;
+      if (!prompt) { alert("Enter a test prompt first."); return; }
 
       runBtn.disabled = true;
-      gameImage.style.display = "none";
-      imgPlaceholder.style.display = "flex";
-      imgPlaceholder.textContent = "Calling worker...";
-      rawJson.textContent = "—";
-      setStatus("pending", "⏳ Requesting gameData from worker...");
 
-      const startedAt = performance.now();
+      // --- Endpoint B: build directly in the browser, no worker involved ---
+      const encoded = encodeURIComponent(prompt);
+      const urlB = `https://image.pollinations.ai/prompt/${encoded}?width=512&height=512&enhance=false&model=flux`;
+      testImage(els.b, urlB);
 
-      let data;
-      try {
-        const res = await fetch(url);
-        const text = await res.text();
-        rawJson.textContent = text;
-        if (!res.ok) throw new Error(`Worker responded with HTTP ${res.status}`);
-        data = JSON.parse(text);
-      } catch (err) {
-        setStatus("err", "❌ Worker call failed: " + err.message);
-        imgPlaceholder.textContent = "⚠️ Could not reach worker.";
-        runBtn.disabled = false;
-        return;
+      // --- Endpoint A: ask the worker to build the URL (tests your live worker too) ---
+      if (!base) {
+        setStatus(els.a, "err", "❌ Enter a worker URL to test Endpoint A.");
+      } else {
+        const workerCallUrl = `${base}/?prompt=${encodeURIComponent(prompt)}`;
+        setStatus(els.a, "pending", "⏳ Requesting gameData from worker...");
+        try {
+          const res = await fetch(workerCallUrl);
+          const text = await res.text();
+          rawJson.textContent = text;
+          if (!res.ok) throw new Error(`Worker responded with HTTP ${res.status}`);
+          const data = JSON.parse(text);
+          if (!data.image_url) throw new Error("Worker response had no image_url field.");
+          testImage(els.a, data.image_url);
+        } catch (err) {
+          setStatus(els.a, "err", "❌ Worker call failed: " + err.message);
+        }
       }
 
-      if (!data.image_url) {
-        setStatus("err", "❌ Worker response had no image_url field.");
-        imgPlaceholder.textContent = "⚠️ No image_url in response.";
-        runBtn.disabled = false;
-        return;
-      }
-
-      setStatus("pending", "⏳ Worker OK. Loading image from Pollinations (this can take 5–20s while it generates)...");
-      imgPlaceholder.textContent = "Generating image...";
-
-      gameImage.onload = () => {
-        const ms = Math.round(performance.now() - startedAt);
-        imgPlaceholder.style.display = "none";
-        gameImage.style.display = "block";
-        setStatus("ok", `✅ Image loaded successfully in ${ms}ms.`);
-        runBtn.disabled = false;
-      };
-      gameImage.onerror = () => {
-        imgPlaceholder.textContent = "⚠️ Failed to load image from Pollinations.";
-        setStatus("err", "❌ image_url returned by the worker did not load as an image (network error, CORS, or generation failure).");
-        runBtn.disabled = false;
-      };
-
-      gameImage.src = data.image_url;
+      runBtn.disabled = false;
     }
 
     runBtn.addEventListener("click", runTest);
