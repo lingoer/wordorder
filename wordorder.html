@@ -20,7 +20,8 @@
         .btn-r:hover { background: #e2e8f0; }
         .dz { width: 100%; min-height: 52px; border: 2px dashed #cbd5e1; background: var(--bg-3); border-radius: 12px; padding: 6px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
         .dz-the { background: #cbd5e1; color: #475569; padding: 5px 10px; border-radius: 8px; font-size: 14px; font-weight: 700; user-select: none; }
-        .dz-seg { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-height: 28px; }
+        .dz-seg { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-height: 28px; min-width: 32px; border-bottom: 2px dotted #cbd5e1; }
+        .dz-seg:empty { min-width: 40px; }
         .btn-c { width: 100%; background: #059669; color: white; border: none; padding: 12px; border-radius: 12px; font-size: 16px; font-weight: 600; cursor: pointer; }
         .fb { text-align: center; font-weight: 500; padding: 10px; border-radius: 12px; margin-top: 6px; display: none; }
         .wrapper { padding: 8px; border-radius: 12px; margin-bottom: 6px; border: 1px solid rgba(0,0,0,0.05); }
@@ -103,6 +104,7 @@
         const imageLoader = document.getElementById("image-loader");
         const feedback = document.getElementById("feedback-message");
         const nextBtn = document.getElementById("next-btn");
+        const sentenceDropzone = document.getElementById("sentence-dropzone");
         const segments = [1, 2, 3].map(n => document.getElementById(`seg-${n}`));
 
         function getCategory(el) {
@@ -134,6 +136,22 @@
             return closest.after ? closest.element.nextSibling : closest.element;
         }
 
+        // Which of the 3 sentence segments is horizontally closest to the cursor.
+        // Routing at the whole-dropzone level (rather than relying on each segment's
+        // own, sometimes-tiny hitbox) means dropping near a "the" pill or in a gap
+        // still lands in the right place — this is what was broken before: empty
+        // segments collapsed to ~0 width and had almost no hoverable area at all.
+        function nearestSegment(x) {
+            let closest = segments[0], closestDist = Infinity;
+            segments.forEach(seg => {
+                const box = seg.getBoundingClientRect();
+                const cx = box.left + box.width / 2;
+                const dist = Math.abs(x - cx);
+                if (dist < closestDist) { closestDist = dist; closest = seg; }
+            });
+            return closest;
+        }
+
         function initDragAndDrop() {
             // Category pools: simple drop-to-append (used to send a word back / initial supply)
             document.querySelectorAll(".box").forEach(box => {
@@ -144,21 +162,20 @@
                 });
             });
 
-            // Each sentence segment: live reordering while dragging, same as before,
-            // scoped to just that segment so the fixed "the" pills never move.
-            segments.forEach(seg => {
-                seg.addEventListener("dragover", (e) => {
-                    e.preventDefault();
-                    if (!draggedElement) return;
-                    const target = getDropTarget(seg, e.clientX, e.clientY);
-                    if (target == null) {
-                        seg.appendChild(draggedElement);
-                    } else if (target !== draggedElement) {
-                        seg.insertBefore(draggedElement, target);
-                    }
-                });
-                seg.addEventListener("drop", (e) => e.preventDefault());
+            // Whole dropzone strip routes to whichever segment is nearest, then
+            // reorders within that segment exactly as before.
+            sentenceDropzone.addEventListener("dragover", (e) => {
+                e.preventDefault();
+                if (!draggedElement) return;
+                const seg = nearestSegment(e.clientX);
+                const target = getDropTarget(seg, e.clientX, e.clientY);
+                if (target == null) {
+                    seg.appendChild(draggedElement);
+                } else if (target !== draggedElement) {
+                    seg.insertBefore(draggedElement, target);
+                }
             });
+            sentenceDropzone.addEventListener("drop", (e) => e.preventDefault());
         }
 
         function resetPuzzle() {
