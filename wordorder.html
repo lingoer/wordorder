@@ -79,6 +79,7 @@
         const WORKER_URL = "https://wordorder.lingoer.workers.dev";
         let approvedSolutions = [];
         let draggedElement = null;
+        let wrongAttempts = 0; // resets each time a new puzzle loads; 3 misses on one puzzle reveals the answer
 
         const OFFLINE_IMAGE = "data:image/svg+xml;utf8," + encodeURIComponent(
             '<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512">' +
@@ -194,6 +195,7 @@
             feedback.style.display = "none"; gameImage.style.display = "none";
             imageLoader.style.display = "block"; imageLoader.innerText = "Loading artwork...";
             approvedSolutions = data.correct_solutions.map(s => s.toLowerCase().trim().replace(/\s+/g, ' '));
+            wrongAttempts = 0;
 
             gameImage.src = data.image_url;
             gameImage.onload = () => { imageLoader.style.display = "none"; gameImage.style.display = "block"; };
@@ -239,9 +241,17 @@
             const parts = ["the", ...segWords(segments[0]), "the", ...segWords(segments[1]), "the", ...segWords(segments[2])];
             const txt = parts.join(" ").replace(/\s+/g, ' ').trim();
             if (approvedSolutions.includes(txt)) {
+                wrongAttempts = 0;
                 showFeedback("🎉 Correct! Great job!", "#d1fae5", "#065f46");
             } else {
-                showFeedback("❌ Try a different combination!", "#fee2e2", "#991b1b");
+                wrongAttempts++;
+                if (wrongAttempts >= 3) {
+                    const answer = approvedSolutions[0];
+                    const shown = answer.charAt(0).toUpperCase() + answer.slice(1) + ".";
+                    showFeedback(`❌ Not quite. The answer is: "${shown}"`, "#fee2e2", "#991b1b");
+                } else {
+                    showFeedback("❌ Try a different combination!", "#fee2e2", "#991b1b");
+                }
             }
         }
 
