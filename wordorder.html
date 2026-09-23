@@ -53,14 +53,7 @@
                 <span class="dz-lbl">Drop words here:</span>
                 <button id="reset-btn" class="btn-r">Reset ↺</button>
             </div>
-            <div id="sentence-dropzone" class="dz">
-                <span class="dz-the">the</span>
-                <div class="dz-seg" id="seg-1"></div>
-                <span class="dz-the">the</span>
-                <div class="dz-seg" id="seg-2"></div>
-                <span class="dz-the">the</span>
-                <div class="dz-seg" id="seg-3"></div>
-            </div>
+            <div id="sentence-dropzone" class="dz"></div>
         </div>
         <div>
             <button id="check-btn" class="btn-c">Check Answer 🔎</button>
@@ -80,6 +73,7 @@
         let approvedSolutions = [];
         let draggedElement = null;
         let wrongAttempts = 0; // resets each time a new puzzle loads; 3 misses on one puzzle reveals the answer
+        let segments = []; // rebuilt each puzzle load — segment_count now varies (2 or 3) depending on sentence shape
 
         const OFFLINE_IMAGE = "data:image/svg+xml;utf8," + encodeURIComponent(
             '<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512">' +
@@ -98,7 +92,8 @@
                 "objects": ["ball", "table", "cup", "basket"],
                 "prepositions": ["on", "in", "under"]
             },
-            "correct_solutions": ["the happy raccoon puts the ball on the table"]
+            "correct_solutions": ["the happy raccoon puts the ball on the table"],
+            "segment_count": 3
         };
 
         const gameImage = document.getElementById("game-image");
@@ -106,7 +101,6 @@
         const feedback = document.getElementById("feedback-message");
         const nextBtn = document.getElementById("next-btn");
         const sentenceDropzone = document.getElementById("sentence-dropzone");
-        const segments = [1, 2, 3].map(n => document.getElementById(`seg-${n}`));
 
         function getCategory(el) {
             const cls = Array.from(el.classList).find(c => c.startsWith("bg-"));
@@ -190,8 +184,29 @@
             feedback.style.display = "none";
         }
 
+        // Rebuilds the "the [blank] the [blank] ..." dropzone from scratch to match
+        // however many segments this puzzle needs (2 for item_only/location_only shapes,
+        // 3 for the full shape) — segment_count now varies per puzzle instead of being
+        // fixed markup, since not every sentence has both an object and a location.
+        function buildDropzone(segmentCount) {
+            sentenceDropzone.innerHTML = "";
+            segments = [];
+            for (let i = 0; i < segmentCount; i++) {
+                const theSpan = document.createElement("span");
+                theSpan.className = "dz-the";
+                theSpan.innerText = "the";
+                sentenceDropzone.appendChild(theSpan);
+
+                const seg = document.createElement("div");
+                seg.className = "dz-seg";
+                seg.id = `seg-${i + 1}`;
+                sentenceDropzone.appendChild(seg);
+                segments.push(seg);
+            }
+        }
+
         function renderPayload(data) {
-            segments.forEach(seg => seg.innerHTML = "");
+            buildDropzone(data.segment_count || 3);
             feedback.style.display = "none"; gameImage.style.display = "none";
             imageLoader.style.display = "block"; imageLoader.innerText = "Loading artwork...";
             approvedSolutions = data.correct_solutions.map(s => s.toLowerCase().trim().replace(/\s+/g, ' '));
@@ -238,7 +253,7 @@
         function evaluateSentence() {
             const totalWords = segments.reduce((sum, seg) => sum + seg.children.length, 0);
             if (!totalWords) { showFeedback("Drag words onto the target line first!", "#fef3c7", "#92400e"); return; }
-            const parts = ["the", ...segWords(segments[0]), "the", ...segWords(segments[1]), "the", ...segWords(segments[2])];
+            const parts = segments.flatMap(seg => ["the", ...segWords(seg)]);
             const txt = parts.join(" ").replace(/\s+/g, ' ').trim();
             if (approvedSolutions.includes(txt)) {
                 wrongAttempts = 0;
