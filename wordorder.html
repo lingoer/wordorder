@@ -13,6 +13,11 @@
         .hdr h1 { margin: 0; font-size: 20px; color: #1e293b; }
         .btn-n { background: #2563eb; color: white; border: none; padding: 8px 16px; border-radius: 8px; font-weight: 500; cursor: pointer; }
         .btn-n:disabled { background: #94a3b8; cursor: not-allowed; }
+        .diff-row { display: flex; justify-content: space-between; align-items: center; }
+        .diff-lbl { font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; }
+        .diff-toggle { display: flex; gap: 6px; }
+        .diff-btn { background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; padding: 4px 10px; border-radius: 8px; font-size: 11px; font-weight: 700; text-transform: uppercase; cursor: pointer; }
+        .diff-btn.active { background: #2563eb; color: white; border-color: #2563eb; }
         .img-bx { width: 100%; height: 220px; background: var(--bg-4); border-radius: 12px; display: flex; align-items: center; justify-content: center; overflow: hidden; border: 1px solid #cbd5e1; text-align: center; }
         .dz-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
         .dz-lbl { font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; display: block; }
@@ -29,6 +34,7 @@
         .box { min-height: 44px; display: flex; flex-wrap: wrap; gap: 6px; }
         .w-crd { padding: 5px 10px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: grab; color: white; user-select: none; touch-action: none; }
         .w-crd.dragging { opacity: 0.35; cursor: grabbing; }
+        .drag-ghost { position: fixed; z-index: 9999; pointer-events: none; opacity: 0.92; transform: translate(-50%, -100%); box-shadow: 0 6px 16px -4px rgba(0,0,0,0.35); }
         .bg-subjects { background-color: #3b82f6; }
         .bg-verbs { background-color: #22c55e; }
         .bg-adjectives { background-color: #a855f7; }
@@ -43,6 +49,13 @@
         <div class="hdr">
             <h1>✨ Sentence Builder</h1>
             <button id="next-btn" class="btn-n">Next 🔄</button>
+        </div>
+        <div class="diff-row">
+            <span class="diff-lbl">Difficulty:</span>
+            <div class="diff-toggle">
+                <button id="diff-beginner" class="diff-btn active" data-level="beginner">Beginner</button>
+                <button id="diff-intermediate" class="diff-btn" data-level="intermediate">Intermediate</button>
+            </div>
         </div>
         <div class="img-bx">
             <div id="image-loader">Loading artwork...</div>
@@ -72,8 +85,11 @@
         const WORKER_URL = "https://wordorder.lingoer.workers.dev";
         let approvedSolutions = [];
         let draggedElement = null;
+        let activePointerId = null;
+        let ghostEl = null;
         let wrongAttempts = 0; // resets each time a new puzzle loads; 3 misses on one puzzle reveals the answer
-        let segments = []; // rebuilt each puzzle load — segment_count now varies (2 or 3) depending on sentence shape
+        let segments = []; // rebuilt each puzzle load — segment_count now varies (2, 3 or 4) depending on sentence shape
+        let difficulty = "beginner";
 
         const OFFLINE_IMAGE = "data:image/svg+xml;utf8," + encodeURIComponent(
             '<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512">' +
@@ -107,10 +123,87 @@
             return cls ? cls.replace("bg-", "") : null;
         }
 
+        // --- Pointer Events drag-and-drop (works for mouse, touch, and pen) -----------------
+        // HTML5 native drag-and-drop (draggable="true" + dragstart/dragover/drop) only ever
+        // worked with a mouse — most touch browsers never fire those events for a finger
+        // drag. Pointer Events unify all input types into one API, so the same code path
+        // now handles a desktop mouse and an Android/iOS touch drag identically. The actual
+        // DOM element is still moved live into place as you drag (exactly like the old
+        // dragover-driven reordering did) — the "ghost" pill is purely a visual stand-in so
+        // there's something visible following your finger, since touch has no native drag
+        // image the way a mouse drag does in a desktop browser.
+
         function makeDraggable(el) {
-            el.setAttribute("draggable", "true");
-            el.addEventListener("dragstart", () => { draggedElement = el; el.classList.add("dragging"); });
-            el.addEventListener("dragend", () => { el.classList.remove("dragging"); draggedElement = null; });
+            el.addEventListener("pointerdown", onPointerDown);
+        }
+
+        function positionGhost(x, y) {
+            if (!ghostEl) return;
+            ghostEl.style.left = x + "px";
+            ghostEl.style.top = (y - 22) + "px"; // float just above the finger/cursor
+        }
+
+        function onPointerDown(e) {
+            if (draggedElement) return; // one drag at a time
+            const el = e.currentTarget;
+            e.preventDefault();
+
+            draggedElement = el;
+            activePointerId = e.pointerId;
+            el.classList.add("dragging");
+            el.setPointerCapture(e.pointerId); // keeps move/up events targeting el even off-element
+
+            ghostEl = el.cloneNode(true);
+            ghostEl.classList.remove("dragging");
+            ghostEl.classList.add("drag-ghost");
+            document.body.appendChild(ghostEl);
+            positionGhost(e.clientX, e.clientY);
+
+            el.addEventListener("pointermove", onPointerMove);
+            el.addEventListener("pointerup", onPointerUp);
+            el.addEventListener("pointercancel", onPointerUp);
+        }
+
+        function onPointerMove(e) {
+            if (!draggedElement || e.pointerId !== activePointerId) return;
+            positionGhost(e.clientX, e.clientY);
+
+            // Hide the ghost momentarily so elementFromPoint can see what's underneath it.
+            ghostEl.style.display = "none";
+            const hit = document.elementFromPoint(e.clientX, e.clientY);
+            ghostEl.style.display = "";
+            if (!hit) return;
+
+            const box = hit.closest(".box");
+            if (box) {
+                box.appendChild(draggedElement);
+                return;
+            }
+            const dz = hit.closest("#sentence-dropzone");
+            if (dz) {
+                const seg = nearestSegment(e.clientX);
+                const target = getDropTarget(seg, e.clientX, e.clientY);
+                if (target == null) {
+                    seg.appendChild(draggedElement);
+                } else if (target !== draggedElement) {
+                    seg.insertBefore(draggedElement, target);
+                }
+            }
+            // Anywhere else (blank page, between panels): leave the pill at its last valid
+            // position, same as native drag-and-drop did when you dragged outside a target.
+        }
+
+        function onPointerUp(e) {
+            if (!draggedElement || e.pointerId !== activePointerId) return;
+            const el = draggedElement;
+            try { el.releasePointerCapture(e.pointerId); } catch (err) { /* already released */ }
+            el.removeEventListener("pointermove", onPointerMove);
+            el.removeEventListener("pointerup", onPointerUp);
+            el.removeEventListener("pointercancel", onPointerUp);
+            el.classList.remove("dragging");
+            if (ghostEl) { ghostEl.remove(); ghostEl = null; }
+            draggedElement = null;
+            activePointerId = null;
         }
 
         // Finds the pill nearest the cursor (2D-aware, so it works across wrapped rows)
@@ -131,11 +224,9 @@
             return closest.after ? closest.element.nextSibling : closest.element;
         }
 
-        // Which of the 3 sentence segments is horizontally closest to the cursor.
-        // Routing at the whole-dropzone level (rather than relying on each segment's
-        // own, sometimes-tiny hitbox) means dropping near a "the" pill or in a gap
-        // still lands in the right place — this is what was broken before: empty
-        // segments collapsed to ~0 width and had almost no hoverable area at all.
+        // Which sentence segment is horizontally closest to the cursor. Routing at the
+        // whole-dropzone level (rather than relying on each segment's own, sometimes-tiny
+        // hitbox) means dropping near a "the" pill or in a gap still lands in the right place.
         function nearestSegment(x) {
             let closest = segments[0], closestDist = Infinity;
             segments.forEach(seg => {
@@ -145,32 +236,6 @@
                 if (dist < closestDist) { closestDist = dist; closest = seg; }
             });
             return closest;
-        }
-
-        function initDragAndDrop() {
-            // Category pools: simple drop-to-append (used to send a word back / initial supply)
-            document.querySelectorAll(".box").forEach(box => {
-                box.addEventListener("dragover", (e) => e.preventDefault());
-                box.addEventListener("drop", (e) => {
-                    e.preventDefault();
-                    if (draggedElement) box.appendChild(draggedElement);
-                });
-            });
-
-            // Whole dropzone strip routes to whichever segment is nearest, then
-            // reorders within that segment exactly as before.
-            sentenceDropzone.addEventListener("dragover", (e) => {
-                e.preventDefault();
-                if (!draggedElement) return;
-                const seg = nearestSegment(e.clientX);
-                const target = getDropTarget(seg, e.clientX, e.clientY);
-                if (target == null) {
-                    seg.appendChild(draggedElement);
-                } else if (target !== draggedElement) {
-                    seg.insertBefore(draggedElement, target);
-                }
-            });
-            sentenceDropzone.addEventListener("drop", (e) => e.preventDefault());
         }
 
         function resetPuzzle() {
@@ -184,10 +249,10 @@
             feedback.style.display = "none";
         }
 
-        // Rebuilds the "the [blank] the [blank] ..." dropzone from scratch to match
-        // however many segments this puzzle needs (2 for item_only/location_only shapes,
-        // 3 for the full shape) — segment_count now varies per puzzle instead of being
-        // fixed markup, since not every sentence has both an object and a location.
+        // Rebuilds the "the [blank] the [blank] ..." dropzone from scratch to match however
+        // many segments this puzzle needs (2 for item_only/location_only, 3 for full or
+        // location_extended, 4 for full_extended) — segment_count varies per puzzle since
+        // not every sentence has an object, a location, or a second location clause.
         function buildDropzone(segmentCount) {
             sentenceDropzone.innerHTML = "";
             segments = [];
@@ -233,7 +298,7 @@
             imageLoader.style.display = "block";
             imageLoader.innerText = "Generating a new puzzle...";
             try {
-                const res = await fetch(WORKER_URL);
+                const res = await fetch(`${WORKER_URL}?difficulty=${difficulty}`);
                 const text = await res.text();
                 let data;
                 try { data = JSON.parse(text); } catch { throw new Error("Worker returned non-JSON response."); }
@@ -244,6 +309,13 @@
                 renderPayload(mockData);
             }
             nextBtn.disabled = false;
+        }
+
+        function setDifficulty(level) {
+            if (level === difficulty) return;
+            difficulty = level;
+            document.querySelectorAll(".diff-btn").forEach(b => b.classList.toggle("active", b.dataset.level === level));
+            fetchNewPuzzle();
         }
 
         function segWords(seg) {
@@ -275,7 +347,8 @@
         document.getElementById("check-btn").addEventListener("click", evaluateSentence);
         nextBtn.addEventListener("click", fetchNewPuzzle);
         document.getElementById("reset-btn").addEventListener("click", resetPuzzle);
-        initDragAndDrop();
+        document.getElementById("diff-beginner").addEventListener("click", () => setDifficulty("beginner"));
+        document.getElementById("diff-intermediate").addEventListener("click", () => setDifficulty("intermediate"));
         fetchNewPuzzle();
     </script>
 </body>
