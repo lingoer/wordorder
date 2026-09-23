@@ -127,11 +127,23 @@
         // HTML5 native drag-and-drop (draggable="true" + dragstart/dragover/drop) only ever
         // worked with a mouse — most touch browsers never fire those events for a finger
         // drag. Pointer Events unify all input types into one API, so the same code path
-        // now handles a desktop mouse and an Android/iOS touch drag identically. The actual
-        // DOM element is still moved live into place as you drag (exactly like the old
-        // dragover-driven reordering did) — the "ghost" pill is purely a visual stand-in so
-        // there's something visible following your finger, since touch has no native drag
-        // image the way a mouse drag does in a desktop browser.
+        // now handles a desktop mouse and an Android/iOS touch drag identically.
+        //
+        // FIX (index_9): the first pass (index_8) attached pointermove/pointerup listeners
+        // directly to the dragged element itself, plus setPointerCapture on it. That broke on
+        // both desktop and touch: as soon as the drag lived-reordered the element into a new
+        // parent (insertBefore into a different pool/segment mid-drag), several browsers
+        // implicitly release pointer capture on a reparented element. Once capture drops,
+        // move/up events stop being delivered to that specific element (they only reach
+        // whatever's now directly under the pointer, which has no listeners) — so the drag
+        // silently froze mid-gesture with no pointerup ever firing, leaving `draggedElement`
+        // permanently set and blocking every future pointerdown (matches the reported "stuck
+        // pill, Next still works" symptom exactly).
+        //
+        // Fix: register pointermove/pointerup/pointercancel ONCE on `document` (they bubble
+        // there from anywhere on the page, so reparenting the dragged element mid-gesture no
+        // longer matters), and drop setPointerCapture entirely — it isn't needed once the
+        // listeners live above every possible drop target.
 
         function makeDraggable(el) {
             el.addEventListener("pointerdown", onPointerDown);
@@ -151,17 +163,12 @@
             draggedElement = el;
             activePointerId = e.pointerId;
             el.classList.add("dragging");
-            el.setPointerCapture(e.pointerId); // keeps move/up events targeting el even off-element
 
             ghostEl = el.cloneNode(true);
             ghostEl.classList.remove("dragging");
             ghostEl.classList.add("drag-ghost");
             document.body.appendChild(ghostEl);
             positionGhost(e.clientX, e.clientY);
-
-            el.addEventListener("pointermove", onPointerMove);
-            el.addEventListener("pointerup", onPointerUp);
-            el.addEventListener("pointercancel", onPointerUp);
         }
 
         function onPointerMove(e) {
@@ -195,16 +202,17 @@
 
         function onPointerUp(e) {
             if (!draggedElement || e.pointerId !== activePointerId) return;
-            const el = draggedElement;
-            try { el.releasePointerCapture(e.pointerId); } catch (err) { /* already released */ }
-            el.removeEventListener("pointermove", onPointerMove);
-            el.removeEventListener("pointerup", onPointerUp);
-            el.removeEventListener("pointercancel", onPointerUp);
-            el.classList.remove("dragging");
+            draggedElement.classList.remove("dragging");
             if (ghostEl) { ghostEl.remove(); ghostEl = null; }
             draggedElement = null;
             activePointerId = null;
         }
+
+        // Registered once, globally — see the note above onPointerDown for why this replaced
+        // the old per-element listener + setPointerCapture approach.
+        document.addEventListener("pointermove", onPointerMove);
+        document.addEventListener("pointerup", onPointerUp);
+        document.addEventListener("pointercancel", onPointerUp);
 
         // Finds the pill nearest the cursor (2D-aware, so it works across wrapped rows)
         // and reports whether to insert before or after it.
