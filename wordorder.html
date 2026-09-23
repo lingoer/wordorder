@@ -129,21 +129,24 @@
         // drag. Pointer Events unify all input types into one API, so the same code path
         // now handles a desktop mouse and an Android/iOS touch drag identically.
         //
-        // FIX (index_9): the first pass (index_8) attached pointermove/pointerup listeners
-        // directly to the dragged element itself, plus setPointerCapture on it. That broke on
-        // both desktop and touch: as soon as the drag lived-reordered the element into a new
-        // parent (insertBefore into a different pool/segment mid-drag), several browsers
-        // implicitly release pointer capture on a reparented element. Once capture drops,
-        // move/up events stop being delivered to that specific element (they only reach
-        // whatever's now directly under the pointer, which has no listeners) — so the drag
-        // silently froze mid-gesture with no pointerup ever firing, leaving `draggedElement`
-        // permanently set and blocking every future pointerdown (matches the reported "stuck
-        // pill, Next still works" symptom exactly).
+        // index_9 fix: pointermove/pointerup/pointercancel are registered once on `document`
+        // (not on the dragged element + setPointerCapture), so reparenting the dragged pill
+        // mid-gesture can no longer silently break event delivery. See the note that used to
+        // sit here for the full story.
         //
-        // Fix: register pointermove/pointerup/pointercancel ONCE on `document` (they bubble
-        // there from anywhere on the page, so reparenting the dragged element mid-gesture no
-        // longer matters), and drop setPointerCapture entirely — it isn't needed once the
-        // listeners live above every possible drop target.
+        // index_10 fix: within the dropzone, segment routing used to pick whichever segment's
+        // bounding-box CENTER was closest to the pointer's X only (ignoring Y entirely). Once
+        // a segment held two or three pills it could grow wide enough that its center drifted
+        // well away from its own right edge — so dropping right after the last pill in a
+        // *full* segment could measure as closer to the NEXT segment's (still small) center,
+        // silently misrouting the pill one segment too far and making it look "stuck" past a
+        // "the" it should never have crossed. Fixed two ways: (1) prefer the segment the
+        // browser says the pointer is actually over (elementFromPoint hit-testing `.dz-seg`
+        // directly) before falling back to any distance heuristic, and (2) when a fallback IS
+        // needed (pointer is over a "the" label or the dropzone's own padding, not any
+        // segment), measure distance to the NEAREST POINT on each segment's rect — in both X
+        // and Y — rather than to its center, which stays accurate regardless of how wide a
+        // segment has grown or how the dropzone has wrapped across rows.
 
         function makeDraggable(el) {
             el.addEventListener("pointerdown", onPointerDown);
@@ -188,7 +191,12 @@
             }
             const dz = hit.closest("#sentence-dropzone");
             if (dz) {
-                const seg = nearestSegment(e.clientX);
+                // Trust the browser's own hit-test first: if the pointer is directly over a
+                // segment (or a pill already inside one), that IS the target segment — no
+                // distance guessing needed. Only fall back to nearestSegment when the pointer
+                // is over a "the" label or bare dropzone padding, between segments.
+                let seg = hit.closest(".dz-seg");
+                if (!seg) seg = nearestSegment(e.clientX, e.clientY);
                 const target = getDropTarget(seg, e.clientX, e.clientY);
                 if (target == null) {
                     seg.appendChild(draggedElement);
@@ -232,15 +240,20 @@
             return closest.after ? closest.element.nextSibling : closest.element;
         }
 
-        // Which sentence segment is horizontally closest to the cursor. Routing at the
-        // whole-dropzone level (rather than relying on each segment's own, sometimes-tiny
-        // hitbox) means dropping near a "the" pill or in a gap still lands in the right place.
-        function nearestSegment(x) {
+        // Fallback segment router — only used when the pointer isn't directly over any
+        // segment (e.g. hovering a "the" label or blank dropzone padding). Measures distance
+        // to the NEAREST POINT on each segment's rectangle (clamping x/y into the rect, so the
+        // distance is 0 anywhere inside it) rather than to the rect's center — a center-only
+        // measure gets worse the wider a segment grows, which is exactly what broke ordering
+        // once a segment held two or three words.
+        function nearestSegment(x, y) {
             let closest = segments[0], closestDist = Infinity;
             segments.forEach(seg => {
                 const box = seg.getBoundingClientRect();
-                const cx = box.left + box.width / 2;
-                const dist = Math.abs(x - cx);
+                const nx = Math.min(Math.max(x, box.left), box.right);
+                const ny = Math.min(Math.max(y, box.top), box.bottom);
+                const dx = x - nx, dy = y - ny;
+                const dist = dx * dx + dy * dy;
                 if (dist < closestDist) { closestDist = dist; closest = seg; }
             });
             return closest;
