@@ -42,6 +42,7 @@
         .bg-adjectives { background-color: #a855f7; }
         .bg-objects { background-color: #f59e0b; }
         .bg-prepositions { background-color: #ec4899; }
+        .bg-articles { background-color: #14b8a6; }
         .categories { display: flex; flex-direction: column; }
     </style>
 </head>
@@ -80,6 +81,7 @@
             <div class="wrapper" style="background:#f3e8ff;"><span class="lbl" style="color:#9333ea;">Adjectives</span><div id="pool-adjectives" class="box"></div></div>
             <div class="wrapper" style="background:#fffbeb;"><span class="lbl" style="color:#d97706;">Objects</span><div id="pool-objects" class="box"></div></div>
             <div class="wrapper" style="background:#fdf2f8;"><span class="lbl" style="color:#db2777;">Prepositions</span><div id="pool-prepositions" class="box"></div></div>
+            <div class="wrapper" style="background:#f0fdfa;"><span class="lbl" style="color:#0d9488;">Articles</span><div id="pool-articles" class="box"></div></div>
         </div>
     </div>
 
@@ -92,12 +94,24 @@
         let wrongAttempts = 0; // resets on every stage transition, not just on a new puzzle
         let difficulty = "beginner";
 
-        // --- Staged-puzzle state (new in index_11) --------------------------------------------
-        // `template` is the FULL sentence as an ordered list of tokens (fixed "the"s and slots),
+        // --- Staged-puzzle state (carried over from index_11) ----------------------------------
+        // `template` is the FULL sentence as an ordered list of tokens (fixed text and slots),
         // each carrying the stage number it's revealed on. `stagePools` has one entry per stage:
         // the word pools active that stage, and the expected cumulative sentence text once that
         // stage is solved. `activeSegments` holds only the CURRENT stage's empty/fillable blanks
         // (everything from earlier stages renders as plain locked text, not draggable).
+        //
+        // index_12 changes vs index_11 (matching worker28's compound-predicate rewrite):
+        //   - a 6th "Articles" pool box/category, active only at Intermediate difficulty (at
+        //     Beginner the article is baked into the template as fixed {type:"text"} tokens, so
+        //     the "articles" category never appears in that stage's pools and the wrapper hides
+        //     itself automatically via the existing show/hide-by-active-category logic).
+        //   - multi-word subjects: worker28 can now emit 1 OR 2 subject-category tokens at stage
+        //     1 (e.g. "construction" + "worker" as two separate ordered blanks). No client change
+        //     was needed for this — renderStage() already renders one blank per token regardless
+        //     of how many tokens share a category and a stage, and evaluateSentence() already
+        //     grades every blank in activeSegments independently. Verified against the worked
+        //     example below.
         let template = [];
         let stagePools = [];
         let totalStages = 1;
@@ -107,31 +121,39 @@
         const OFFLINE_IMAGE = "data:image/svg+xml;utf8," + encodeURIComponent(
             '<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512">' +
             '<rect width="100%" height="100%" fill="#e2e8f0"/>' +
-            '<text x="50%" y="46%" font-family="system-ui, sans-serif" font-size="30" fill="#64748b" text-anchor="middle">🦝 Offline demo</text>' +
+            '<text x="50%" y="46%" font-family="system-ui, sans-serif" font-size="30" fill="#64748b" text-anchor="middle">👷 Offline demo</text>' +
             '<text x="50%" y="58%" font-family="system-ui, sans-serif" font-size="16" fill="#94a3b8" text-anchor="middle">Worker unreachable — using local fallback</text>' +
             '</svg>'
         );
 
-        // Offline fallback matching the new staged response shape: "the happy raccoon puts the
-        // ball on the table" — stage 1 core, stage 2 the item, stage 3 the location + adjective.
+        // Offline fallback matching worker28's compound-predicate response shape — this is the
+        // user's own worked example: "the happy construction worker is holding a bun and
+        // standing near a stool" (Intermediate: two-word subject as two pills, draggable
+        // articles, a compound "and"-joined second action, adjective revealed last).
         const mockData = {
             "image_url": OFFLINE_IMAGE,
+            "difficulty": "intermediate",
             "template": [
                 { "type": "text", "text": "the", "stage": 1 },
-                { "type": "slot", "category": "adjectives", "value": "happy", "stage": 3 },
-                { "type": "slot", "category": "subjects", "value": "raccoon", "stage": 1 },
-                { "type": "slot", "category": "verbs", "value": "puts", "stage": 1 },
-                { "type": "text", "text": "the", "stage": 2 },
-                { "type": "slot", "category": "objects", "value": "ball", "stage": 2 },
-                { "type": "slot", "category": "prepositions", "value": "on", "stage": 3 },
-                { "type": "text", "text": "the", "stage": 3 },
-                { "type": "slot", "category": "objects", "value": "table", "stage": 3 }
+                { "type": "slot", "category": "adjectives", "value": "happy", "stage": 4 },
+                { "type": "slot", "category": "subjects", "value": "construction", "stage": 1 },
+                { "type": "slot", "category": "subjects", "value": "worker", "stage": 1 },
+                { "type": "text", "text": "is", "stage": 1 },
+                { "type": "slot", "category": "verbs", "value": "holding", "stage": 1 },
+                { "type": "slot", "category": "articles", "value": "a", "stage": 2 },
+                { "type": "slot", "category": "objects", "value": "bun", "stage": 2 },
+                { "type": "text", "text": "and", "stage": 3 },
+                { "type": "slot", "category": "verbs", "value": "standing", "stage": 3 },
+                { "type": "slot", "category": "prepositions", "value": "near", "stage": 3 },
+                { "type": "slot", "category": "articles", "value": "a", "stage": 3 },
+                { "type": "slot", "category": "objects", "value": "stool", "stage": 3 }
             ],
-            "total_stages": 3,
+            "total_stages": 4,
             "stage_pools": [
-                { "stage": 1, "target": "the raccoon puts", "pools": { "subjects": ["raccoon", "cat", "dog", "robot"], "verbs": ["puts", "drops", "places", "leaves"] } },
-                { "stage": 2, "target": "the raccoon puts the ball", "pools": { "objects": ["ball", "cup", "box", "shoe"] } },
-                { "stage": 3, "target": "the happy raccoon puts the ball on the table", "pools": { "adjectives": ["happy", "red", "wet", "round"], "prepositions": ["on", "in", "under", "behind"], "objects": ["table", "chair", "bed", "shelf"] } }
+                { "stage": 1, "target": "the construction worker is holding", "pools": { "subjects": ["construction", "chef", "scientist", "worker", "doctor", "gardener"], "verbs": ["playing", "holding", "drinking", "sleeping"] } },
+                { "stage": 2, "target": "the construction worker is holding a bun", "pools": { "articles": ["an", "the", "a"], "objects": ["spoon", "book", "bun", "car"] } },
+                { "stage": 3, "target": "the construction worker is holding a bun and standing near a stool", "pools": { "verbs": ["standing", "catching", "driving", "opening"], "prepositions": ["behind", "near", "in", "in front of"], "articles": ["a", "the", "an"], "objects": ["kitchen", "hat", "apple", "stool"] } },
+                { "stage": 4, "target": "the happy construction worker is holding a bun and standing near a stool", "pools": { "adjectives": ["tall", "green", "yellow", "happy"] } }
             ]
         };
 
@@ -141,7 +163,7 @@
         const nextBtn = document.getElementById("next-btn");
         const sentenceDropzone = document.getElementById("sentence-dropzone");
         const stageLabel = document.getElementById("stage-label");
-        const CATEGORIES = ["subjects", "verbs", "adjectives", "objects", "prepositions"];
+        const CATEGORIES = ["subjects", "verbs", "adjectives", "objects", "prepositions", "articles"];
 
         function getCategory(el) {
             const cls = Array.from(el.classList).find(c => c.startsWith("bg-"));
@@ -149,17 +171,9 @@
         }
 
         // --- Pointer Events drag-and-drop (works for mouse, touch, and pen) -----------------
-        // index_9 fixed pointer-capture-loss-on-reparent by moving the move/up listeners to
-        // `document`. index_10 fixed segment misrouting with clamped-rect distance. This
-        // version (index_11) changes the interaction model itself: since every blank now holds
-        // exactly ONE word (the staged design breaks sentences into single-word slots instead
-        // of multi-word segments), there's no more need to live-reorder the dragged element
-        // into the DOM on every pointermove. Instead, only the GHOST follows the pointer during
-        // the drag (a highlight shows which blank/pool is currently under it), and the actual
-        // placement — including swapping out an already-filled blank's pill back to its pool —
-        // happens once, on pointerup. This is both simpler and more robust: it sidesteps the
-        // whole "reparenting mid-drag breaks something" class of bug we hit twice building the
-        // live-reorder version, and matches how most touch drag-and-drop libraries behave.
+        // Unchanged from index_11: only the GHOST follows the pointer during a drag; actual
+        // placement (including swapping an already-filled blank's pill back to its pool) happens
+        // once, on pointerup.
 
         function makeDraggable(el) {
             el.addEventListener("pointerdown", onPointerDown);
@@ -202,7 +216,7 @@
             const dz = hit.closest("#sentence-dropzone");
             if (dz) {
                 let seg = hit.closest(".dz-seg");
-                if (!seg) seg = nearestSegment(x, y); // hovering a "the"/locked label or padding
+                if (!seg) seg = nearestSegment(x, y); // hovering a fixed-text label or padding
                 if (seg) return { type: "segment", el: seg };
             }
             return null;
@@ -273,7 +287,10 @@
         // Rebuilds the dropzone AND the word pools for stage `n`. Tokens from earlier stages
         // render as plain locked text (their answer is already settled); tokens for THIS stage
         // render as empty, fillable blanks; tokens for later stages don't render at all yet —
-        // that's what makes the sentence visibly grow instead of just filling in.
+        // that's what makes the sentence visibly grow instead of just filling in. This loop is
+        // fully generic per-token, so it renders any number of same-category, same-stage tokens
+        // correctly (e.g. worker28's two-word subject "construction" + "worker" both at stage 1
+        // just become two separate blanks/pills in sequence, same as any other token pair would).
         function renderStage(n) {
             sentenceDropzone.innerHTML = "";
             activeSegments = [];
