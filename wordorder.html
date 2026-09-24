@@ -21,12 +21,14 @@
         .img-bx { width: 100%; height: 220px; background: var(--bg-4); border-radius: 12px; display: flex; align-items: center; justify-content: center; overflow: hidden; border: 1px solid #cbd5e1; text-align: center; }
         .dz-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
         .dz-lbl { font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; display: block; }
+        .stage-lbl { font-size: 11px; font-weight: 700; color: #2563eb; }
         .btn-r { background: #f1f5f9; color: #475569; border: 1px solid #cbd5e1; padding: 4px 10px; border-radius: 8px; font-size: 11px; font-weight: 700; text-transform: uppercase; cursor: pointer; }
         .btn-r:hover { background: #e2e8f0; }
         .dz { width: 100%; min-height: 52px; border: 2px dashed #cbd5e1; background: var(--bg-3); border-radius: 12px; padding: 6px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
         .dz-the { background: #cbd5e1; color: #475569; padding: 5px 10px; border-radius: 8px; font-size: 14px; font-weight: 700; user-select: none; }
-        .dz-seg { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-height: 28px; min-width: 32px; border-bottom: 2px dotted #cbd5e1; }
-        .dz-seg:empty { min-width: 40px; }
+        .dz-locked { padding: 5px 10px; border-radius: 8px; font-size: 14px; font-weight: 600; color: white; opacity: 0.8; user-select: none; }
+        .dz-seg { display: flex; align-items: center; min-height: 28px; min-width: 40px; border-bottom: 2px dotted #cbd5e1; border-radius: 6px; transition: background-color 0.15s, outline 0.15s; }
+        .dz-seg.drop-hover { outline: 2px solid #2563eb; outline-offset: 1px; background: #dbeafe; }
         .btn-c { width: 100%; background: #059669; color: white; border: none; padding: 12px; border-radius: 12px; font-size: 16px; font-weight: 600; cursor: pointer; }
         .fb { text-align: center; font-weight: 500; padding: 10px; border-radius: 12px; margin-top: 6px; display: none; }
         .wrapper { padding: 8px; border-radius: 12px; margin-bottom: 6px; border: 1px solid rgba(0,0,0,0.05); }
@@ -63,7 +65,7 @@
         </div>
         <div>
             <div class="dz-row">
-                <span class="dz-lbl">Drop words here:</span>
+                <span class="dz-lbl">Drop words here: <span id="stage-label" class="stage-lbl"></span></span>
                 <button id="reset-btn" class="btn-r">Reset ↺</button>
             </div>
             <div id="sentence-dropzone" class="dz"></div>
@@ -83,13 +85,24 @@
 
     <script>
         const WORKER_URL = "https://wordorder.lingoer.workers.dev";
-        let approvedSolutions = [];
         let draggedElement = null;
         let activePointerId = null;
         let ghostEl = null;
-        let wrongAttempts = 0; // resets each time a new puzzle loads; 3 misses on one puzzle reveals the answer
-        let segments = []; // rebuilt each puzzle load — segment_count now varies (2, 3 or 4) depending on sentence shape
+        let hoverTarget = null;
+        let wrongAttempts = 0; // resets on every stage transition, not just on a new puzzle
         let difficulty = "beginner";
+
+        // --- Staged-puzzle state (new in index_11) --------------------------------------------
+        // `template` is the FULL sentence as an ordered list of tokens (fixed "the"s and slots),
+        // each carrying the stage number it's revealed on. `stagePools` has one entry per stage:
+        // the word pools active that stage, and the expected cumulative sentence text once that
+        // stage is solved. `activeSegments` holds only the CURRENT stage's empty/fillable blanks
+        // (everything from earlier stages renders as plain locked text, not draggable).
+        let template = [];
+        let stagePools = [];
+        let totalStages = 1;
+        let currentStage = 1;
+        let activeSegments = [];
 
         const OFFLINE_IMAGE = "data:image/svg+xml;utf8," + encodeURIComponent(
             '<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512">' +
@@ -99,17 +112,27 @@
             '</svg>'
         );
 
+        // Offline fallback matching the new staged response shape: "the happy raccoon puts the
+        // ball on the table" — stage 1 core, stage 2 the item, stage 3 the location + adjective.
         const mockData = {
             "image_url": OFFLINE_IMAGE,
-            "word_pool": {
-                "subjects": ["raccoon", "cat", "dog", "robot"],
-                "verbs": ["puts", "drops", "places", "leaves"],
-                "adjectives": ["happy", "red", "wet", "round"],
-                "objects": ["ball", "table", "cup", "basket"],
-                "prepositions": ["on", "in", "under"]
-            },
-            "correct_solutions": ["the happy raccoon puts the ball on the table"],
-            "segment_count": 3
+            "template": [
+                { "type": "text", "text": "the", "stage": 1 },
+                { "type": "slot", "category": "adjectives", "value": "happy", "stage": 3 },
+                { "type": "slot", "category": "subjects", "value": "raccoon", "stage": 1 },
+                { "type": "slot", "category": "verbs", "value": "puts", "stage": 1 },
+                { "type": "text", "text": "the", "stage": 2 },
+                { "type": "slot", "category": "objects", "value": "ball", "stage": 2 },
+                { "type": "slot", "category": "prepositions", "value": "on", "stage": 3 },
+                { "type": "text", "text": "the", "stage": 3 },
+                { "type": "slot", "category": "objects", "value": "table", "stage": 3 }
+            ],
+            "total_stages": 3,
+            "stage_pools": [
+                { "stage": 1, "target": "the raccoon puts", "pools": { "subjects": ["raccoon", "cat", "dog", "robot"], "verbs": ["puts", "drops", "places", "leaves"] } },
+                { "stage": 2, "target": "the raccoon puts the ball", "pools": { "objects": ["ball", "cup", "box", "shoe"] } },
+                { "stage": 3, "target": "the happy raccoon puts the ball on the table", "pools": { "adjectives": ["happy", "red", "wet", "round"], "prepositions": ["on", "in", "under", "behind"], "objects": ["table", "chair", "bed", "shelf"] } }
+            ]
         };
 
         const gameImage = document.getElementById("game-image");
@@ -117,6 +140,8 @@
         const feedback = document.getElementById("feedback-message");
         const nextBtn = document.getElementById("next-btn");
         const sentenceDropzone = document.getElementById("sentence-dropzone");
+        const stageLabel = document.getElementById("stage-label");
+        const CATEGORIES = ["subjects", "verbs", "adjectives", "objects", "prepositions"];
 
         function getCategory(el) {
             const cls = Array.from(el.classList).find(c => c.startsWith("bg-"));
@@ -124,29 +149,17 @@
         }
 
         // --- Pointer Events drag-and-drop (works for mouse, touch, and pen) -----------------
-        // HTML5 native drag-and-drop (draggable="true" + dragstart/dragover/drop) only ever
-        // worked with a mouse — most touch browsers never fire those events for a finger
-        // drag. Pointer Events unify all input types into one API, so the same code path
-        // now handles a desktop mouse and an Android/iOS touch drag identically.
-        //
-        // index_9 fix: pointermove/pointerup/pointercancel are registered once on `document`
-        // (not on the dragged element + setPointerCapture), so reparenting the dragged pill
-        // mid-gesture can no longer silently break event delivery. See the note that used to
-        // sit here for the full story.
-        //
-        // index_10 fix: within the dropzone, segment routing used to pick whichever segment's
-        // bounding-box CENTER was closest to the pointer's X only (ignoring Y entirely). Once
-        // a segment held two or three pills it could grow wide enough that its center drifted
-        // well away from its own right edge — so dropping right after the last pill in a
-        // *full* segment could measure as closer to the NEXT segment's (still small) center,
-        // silently misrouting the pill one segment too far and making it look "stuck" past a
-        // "the" it should never have crossed. Fixed two ways: (1) prefer the segment the
-        // browser says the pointer is actually over (elementFromPoint hit-testing `.dz-seg`
-        // directly) before falling back to any distance heuristic, and (2) when a fallback IS
-        // needed (pointer is over a "the" label or the dropzone's own padding, not any
-        // segment), measure distance to the NEAREST POINT on each segment's rect — in both X
-        // and Y — rather than to its center, which stays accurate regardless of how wide a
-        // segment has grown or how the dropzone has wrapped across rows.
+        // index_9 fixed pointer-capture-loss-on-reparent by moving the move/up listeners to
+        // `document`. index_10 fixed segment misrouting with clamped-rect distance. This
+        // version (index_11) changes the interaction model itself: since every blank now holds
+        // exactly ONE word (the staged design breaks sentences into single-word slots instead
+        // of multi-word segments), there's no more need to live-reorder the dragged element
+        // into the DOM on every pointermove. Instead, only the GHOST follows the pointer during
+        // the drag (a highlight shows which blank/pool is currently under it), and the actual
+        // placement — including swapping out an already-filled blank's pill back to its pool —
+        // happens once, on pointerup. This is both simpler and more robust: it sidesteps the
+        // whole "reparenting mid-drag breaks something" class of bug we hit twice building the
+        // live-reorder version, and matches how most touch drag-and-drop libraries behave.
 
         function makeDraggable(el) {
             el.addEventListener("pointerdown", onPointerDown);
@@ -155,7 +168,7 @@
         function positionGhost(x, y) {
             if (!ghostEl) return;
             ghostEl.style.left = x + "px";
-            ghostEl.style.top = (y - 22) + "px"; // float just above the finger/cursor
+            ghostEl.style.top = (y - 22) + "px";
         }
 
         function onPointerDown(e) {
@@ -174,81 +187,75 @@
             positionGhost(e.clientX, e.clientY);
         }
 
+        // Resolves what's under (x, y) to a drop target: a pool box, a specific blank
+        // (`.dz-seg`), or null (nowhere valid). Hides the ghost first so elementFromPoint sees
+        // what's actually underneath it rather than the ghost itself.
+        function resolveHit(x, y) {
+            ghostEl.style.display = "none";
+            const hit = document.elementFromPoint(x, y);
+            ghostEl.style.display = "";
+            if (!hit) return null;
+
+            const box = hit.closest(".box");
+            if (box) return { type: "pool", el: box };
+
+            const dz = hit.closest("#sentence-dropzone");
+            if (dz) {
+                let seg = hit.closest(".dz-seg");
+                if (!seg) seg = nearestSegment(x, y); // hovering a "the"/locked label or padding
+                if (seg) return { type: "segment", el: seg };
+            }
+            return null;
+        }
+
         function onPointerMove(e) {
             if (!draggedElement || e.pointerId !== activePointerId) return;
             positionGhost(e.clientX, e.clientY);
 
-            // Hide the ghost momentarily so elementFromPoint can see what's underneath it.
-            ghostEl.style.display = "none";
-            const hit = document.elementFromPoint(e.clientX, e.clientY);
-            ghostEl.style.display = "";
-            if (!hit) return;
-
-            const box = hit.closest(".box");
-            if (box) {
-                box.appendChild(draggedElement);
-                return;
-            }
-            const dz = hit.closest("#sentence-dropzone");
-            if (dz) {
-                // Trust the browser's own hit-test first: if the pointer is directly over a
-                // segment (or a pill already inside one), that IS the target segment — no
-                // distance guessing needed. Only fall back to nearestSegment when the pointer
-                // is over a "the" label or bare dropzone padding, between segments.
-                let seg = hit.closest(".dz-seg");
-                if (!seg) seg = nearestSegment(e.clientX, e.clientY);
-                const target = getDropTarget(seg, e.clientX, e.clientY);
-                if (target == null) {
-                    seg.appendChild(draggedElement);
-                } else if (target !== draggedElement) {
-                    seg.insertBefore(draggedElement, target);
-                }
-            }
-            // Anywhere else (blank page, between panels): leave the pill at its last valid
-            // position, same as native drag-and-drop did when you dragged outside a target.
+            const res = resolveHit(e.clientX, e.clientY);
+            const nextHover = res && res.type === "segment" ? res.el : null;
+            if (hoverTarget && hoverTarget !== nextHover) hoverTarget.classList.remove("drop-hover");
+            hoverTarget = nextHover;
+            if (hoverTarget) hoverTarget.classList.add("drop-hover");
         }
 
         function onPointerUp(e) {
             if (!draggedElement || e.pointerId !== activePointerId) return;
-            draggedElement.classList.remove("dragging");
+            const el = draggedElement;
+            if (hoverTarget) { hoverTarget.classList.remove("drop-hover"); hoverTarget = null; }
+
+            const res = resolveHit(e.clientX, e.clientY);
+            if (res && res.type === "pool") {
+                res.el.appendChild(el);
+            } else if (res && res.type === "segment") {
+                const existing = res.el.querySelector(".w-crd");
+                if (existing && existing !== el) {
+                    const cat = getCategory(existing);
+                    const pool = document.getElementById(`pool-${cat}`);
+                    if (pool) pool.appendChild(existing);
+                }
+                res.el.appendChild(el);
+            }
+            // Invalid drop target (blank page, between panels): el's DOM position never changed
+            // during the drag, so it simply stays exactly where it already was.
+
+            el.classList.remove("dragging");
             if (ghostEl) { ghostEl.remove(); ghostEl = null; }
             draggedElement = null;
             activePointerId = null;
         }
 
-        // Registered once, globally — see the note above onPointerDown for why this replaced
-        // the old per-element listener + setPointerCapture approach.
         document.addEventListener("pointermove", onPointerMove);
         document.addEventListener("pointerup", onPointerUp);
         document.addEventListener("pointercancel", onPointerUp);
 
-        // Finds the pill nearest the cursor (2D-aware, so it works across wrapped rows)
-        // and reports whether to insert before or after it.
-        function getDropTarget(container, x, y) {
-            const pills = [...container.querySelectorAll(".w-crd:not(.dragging)")];
-            let closest = { distance: Infinity, element: null, after: false };
-            for (const el of pills) {
-                const box = el.getBoundingClientRect();
-                const dx = x - (box.left + box.width / 2);
-                const dy = y - (box.top + box.height / 2);
-                const distance = dx * dx + dy * dy;
-                if (distance < closest.distance) {
-                    closest = { distance, element: el, after: dx > 0 };
-                }
-            }
-            if (!closest.element) return null;
-            return closest.after ? closest.element.nextSibling : closest.element;
-        }
-
-        // Fallback segment router — only used when the pointer isn't directly over any
-        // segment (e.g. hovering a "the" label or blank dropzone padding). Measures distance
-        // to the NEAREST POINT on each segment's rectangle (clamping x/y into the rect, so the
-        // distance is 0 anywhere inside it) rather than to the rect's center — a center-only
-        // measure gets worse the wider a segment grows, which is exactly what broke ordering
-        // once a segment held two or three words.
+        // Fallback segment router — only used when the pointer isn't directly over any of the
+        // CURRENT stage's blanks. Measures distance to the nearest point on each blank's
+        // rectangle (clamping x/y into it) rather than to its center.
         function nearestSegment(x, y) {
-            let closest = segments[0], closestDist = Infinity;
-            segments.forEach(seg => {
+            if (!activeSegments.length) return null;
+            let closest = activeSegments[0], closestDist = Infinity;
+            activeSegments.forEach(seg => {
                 const box = seg.getBoundingClientRect();
                 const nx = Math.min(Math.max(x, box.left), box.right);
                 const ny = Math.min(Math.max(y, box.top), box.bottom);
@@ -260,57 +267,84 @@
         }
 
         function resetPuzzle() {
-            segments.forEach(seg => {
-                Array.from(seg.querySelectorAll(".w-crd")).forEach(block => {
-                    const cat = getCategory(block);
-                    const pool = cat ? document.getElementById(`pool-${cat}`) : null;
-                    if (pool) pool.appendChild(block);
-                });
-            });
-            feedback.style.display = "none";
+            renderStage(currentStage); // rebuilding the current stage from scratch clears it
         }
 
-        // Rebuilds the "the [blank] the [blank] ..." dropzone from scratch to match however
-        // many segments this puzzle needs (2 for item_only/location_only, 3 for full or
-        // location_extended, 4 for full_extended) — segment_count varies per puzzle since
-        // not every sentence has an object, a location, or a second location clause.
-        function buildDropzone(segmentCount) {
+        // Rebuilds the dropzone AND the word pools for stage `n`. Tokens from earlier stages
+        // render as plain locked text (their answer is already settled); tokens for THIS stage
+        // render as empty, fillable blanks; tokens for later stages don't render at all yet —
+        // that's what makes the sentence visibly grow instead of just filling in.
+        function renderStage(n) {
             sentenceDropzone.innerHTML = "";
-            segments = [];
-            for (let i = 0; i < segmentCount; i++) {
-                const theSpan = document.createElement("span");
-                theSpan.className = "dz-the";
-                theSpan.innerText = "the";
-                sentenceDropzone.appendChild(theSpan);
+            activeSegments = [];
+            const info = stagePools[n - 1];
 
+            template.forEach(tok => {
+                if (tok.stage > n) return; // not revealed yet — literally not on screen
+
+                if (tok.type === "text") {
+                    const span = document.createElement("span");
+                    span.className = "dz-the";
+                    span.innerText = tok.text;
+                    sentenceDropzone.appendChild(span);
+                    return;
+                }
+
+                if (tok.stage < n) {
+                    // Solved in an earlier stage — show as fixed, non-draggable text.
+                    const span = document.createElement("span");
+                    span.className = `dz-locked bg-${tok.category}`;
+                    span.innerText = tok.value;
+                    sentenceDropzone.appendChild(span);
+                    return;
+                }
+
+                // tok.stage === n: this stage's fillable blank.
                 const seg = document.createElement("div");
                 seg.className = "dz-seg";
-                seg.id = `seg-${i + 1}`;
+                seg.dataset.expected = tok.value;
                 sentenceDropzone.appendChild(seg);
-                segments.push(seg);
-            }
+                activeSegments.push(seg);
+            });
+
+            const activeCategories = Object.keys(info.pools);
+            CATEGORIES.forEach(cat => {
+                const container = document.getElementById(`pool-${cat}`);
+                const wrapper = container.closest(".wrapper");
+                container.innerHTML = "";
+                if (activeCategories.includes(cat)) {
+                    wrapper.style.display = "";
+                    info.pools[cat].forEach(w => {
+                        const block = document.createElement("div");
+                        block.className = `w-crd bg-${cat}`;
+                        block.innerText = w;
+                        makeDraggable(block);
+                        container.appendChild(block);
+                    });
+                } else {
+                    wrapper.style.display = "none";
+                }
+            });
+
+            wrongAttempts = 0;
+            feedback.style.display = "none";
+            stageLabel.innerText = totalStages > 1 ? `(stage ${n} of ${totalStages})` : "";
         }
 
         function renderPayload(data) {
-            buildDropzone(data.segment_count || 3);
+            template = data.template || [];
+            stagePools = data.stage_pools || [];
+            totalStages = data.total_stages || 1;
+            currentStage = 1;
+
             feedback.style.display = "none"; gameImage.style.display = "none";
             imageLoader.style.display = "block"; imageLoader.innerText = "Loading artwork...";
-            approvedSolutions = data.correct_solutions.map(s => s.toLowerCase().trim().replace(/\s+/g, ' '));
-            wrongAttempts = 0;
 
             gameImage.src = data.image_url;
             gameImage.onload = () => { imageLoader.style.display = "none"; gameImage.style.display = "block"; };
             gameImage.onerror = () => { imageLoader.innerText = "⚠️ Failed to load image asset. Check network configurations."; };
 
-            Object.keys(data.word_pool).forEach(cat => {
-                const container = document.getElementById(`pool-${cat}`);
-                container.innerHTML = "";
-                data.word_pool[cat].forEach(w => {
-                    const block = document.createElement("div");
-                    block.className = `w-crd bg-${cat}`; block.innerText = w;
-                    makeDraggable(block); container.appendChild(block);
-                });
-            });
+            renderStage(currentStage);
         }
 
         async function fetchNewPuzzle() {
@@ -339,23 +373,29 @@
             fetchNewPuzzle();
         }
 
-        function segWords(seg) {
-            return Array.from(seg.children).map(el => el.innerText.toLowerCase().trim());
-        }
-
         function evaluateSentence() {
-            const totalWords = segments.reduce((sum, seg) => sum + seg.children.length, 0);
-            if (!totalWords) { showFeedback("Drag words onto the target line first!", "#fef3c7", "#92400e"); return; }
-            const parts = segments.flatMap(seg => ["the", ...segWords(seg)]);
-            const txt = parts.join(" ").replace(/\s+/g, ' ').trim();
-            if (approvedSolutions.includes(txt)) {
+            if (!activeSegments.length) return;
+            const allFilled = activeSegments.every(seg => seg.children.length === 1);
+            if (!allFilled) { showFeedback("Drag words onto the target line first!", "#fef3c7", "#92400e"); return; }
+
+            const allCorrect = activeSegments.every(seg =>
+                seg.children[0].innerText.toLowerCase().trim() === seg.dataset.expected
+            );
+
+            if (allCorrect) {
                 wrongAttempts = 0;
-                showFeedback("🎉 Correct! Great job!", "#d1fae5", "#065f46");
+                if (currentStage < totalStages) {
+                    showFeedback("✅ Correct! Adding more detail...", "#d1fae5", "#065f46");
+                    const next = currentStage + 1;
+                    setTimeout(() => { currentStage = next; renderStage(currentStage); }, 900);
+                } else {
+                    showFeedback("🎉 Correct! Great job — full sentence complete!", "#d1fae5", "#065f46");
+                }
             } else {
                 wrongAttempts++;
                 if (wrongAttempts >= 3) {
-                    const answer = approvedSolutions[0];
-                    const shown = answer.charAt(0).toUpperCase() + answer.slice(1) + ".";
+                    const target = stagePools[currentStage - 1].target;
+                    const shown = target.charAt(0).toUpperCase() + target.slice(1) + ".";
                     showFeedback(`❌ Not quite. The answer is: "${shown}"`, "#fee2e2", "#991b1b");
                 } else {
                     showFeedback("❌ Try a different combination!", "#fee2e2", "#991b1b");
